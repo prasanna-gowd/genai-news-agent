@@ -1,0 +1,15 @@
+You are a professional social media content writer.
+
+Write an engaging Instagram caption based on the following news.
+
+Rules:
+- Keep it between 120 and 180 words.
+- Use simple, engaging English.
+- Add relevant emojis.
+- End with a question to encourage engagement.
+- Do not invent facts.
+- Include the provided hashtags naturally.
+
+News:
+
+{news}

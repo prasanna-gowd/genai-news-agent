@@ -1,0 +1,19 @@
+Create a highly detailed, photorealistic editorial news image prompt.
+
+Headline:
+{headline}
+
+Summary:
+{summary}
+
+Image Description:
+{image_description}
+
+Requirements:
+
+- Realistic newspaper photo
+- Editorial photojournalism style
+- Natural lighting
+- Highly detailed
+- No text, logos or watermarks
+- Return only the final image prompt.
