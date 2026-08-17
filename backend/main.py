@@ -109,6 +109,18 @@ def approve(article_hash: str):
         "message": "Article approved successfully."
     }
 
+# ---------------------------
+# APPROVE ALL
+# ---------------------------
+@app.post("/approve-all")
+def approve_all():
+
+    approved = db.approve_all_articles()
+
+    return {
+        "success": True,
+        "approved": approved
+    }
 
 # ---------------------------
 # Reject

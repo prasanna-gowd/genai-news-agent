@@ -42,3 +42,10 @@ db.sqlite3
 # Output / Build directories
 dist/
 build/
+
+# Generated / large files
+images/generated/
+*.joblib
+*.pkl
+*.pt
+*.pth

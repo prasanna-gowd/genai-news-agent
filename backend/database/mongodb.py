@@ -139,6 +139,24 @@ class MongoDB:
             "APPROVED"
         )
 
+
+    # =====================================
+    # APPROVE ALL PENDING
+    # =====================================
+
+    def approve_all_articles(self):
+
+        result = self.articles.update_many(
+            {"status": "PENDING_APPROVAL"},
+            {
+                "$set": {
+                    "status": "APPROVED"
+                }
+            }
+        )
+
+        return result.modified_count
+
     # =====================================
     # REJECT
     # =====================================

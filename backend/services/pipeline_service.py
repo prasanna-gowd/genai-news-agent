@@ -1,6 +1,7 @@
 from datetime import datetime
 import traceback
 
+from services.image_generation_service import ImageGenerationService
 from services.news_service import NewsService
 from services.scraper_service import ScraperService
 from services.research_service import ResearchService
@@ -8,7 +9,7 @@ from services.ranking_service import RankingService
 from services.caption_service import CaptionService
 from services.image_prompt_service import ImagePromptService
 from database.mongodb import MongoDB
-
+from services.summary_service import SummaryService
 
 class PipelineService:
 
@@ -17,9 +18,11 @@ class PipelineService:
         self.news = NewsService()
         self.scraper = ScraperService()
         self.research = ResearchService()
+        self.summary = SummaryService()
         self.rank = RankingService()
         self.caption = CaptionService()
         self.image_prompt = ImagePromptService()
+        self.image_generator = ImageGenerationService()
         self.db = MongoDB()
 
     def run(self, city="Anantapur"):
@@ -89,6 +92,19 @@ class PipelineService:
                     raise Exception("Research generation failed.")
 
                 print("Research generated.")
+                # ----------------------------
+                # AI Summary
+                # ----------------------------
+                print("Generating summary...")
+
+                summary = self.summary.summarize(
+                    {
+                        "title": article.get("title"),
+                        "scraped_article": article_data
+                    }
+                )
+
+                print("Summary generated.")
 
                 # ----------------------------
                 # Ranking
@@ -118,6 +134,20 @@ class PipelineService:
                 print("Image prompt generated.")
 
                 # ----------------------------
+                # AI Image Generation
+                # ----------------------------
+                print("Generating AI image...")
+
+                generated_image = None
+
+                try:
+                    generated_image = self.image_generator.generate(image_prompt)
+                    print(f"Image saved: {generated_image}")
+
+                except Exception as e:
+                    print(f"Image generation failed: {e}")
+
+                # ----------------------------
                 # Save
                 # ----------------------------
                 now = datetime.utcnow()
@@ -132,7 +162,9 @@ class PipelineService:
                     "scraped_article": article_data,
 
                     "research": research,
+                    "headline": summary.get("headline"),
 
+                    "summary": summary.get("summary"),
                     "importance_score": score,
 
                     "caption": caption,

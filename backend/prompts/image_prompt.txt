@@ -1,19 +1,20 @@
-Create a highly detailed, photorealistic editorial news image prompt.
+You are an expert AI visual designer.
 
-Headline:
-{headline}
-
-Summary:
-{summary}
-
-Image Description:
-{image_description}
+Create a realistic, cinematic news image based on the following article.
 
 Requirements:
-
-- Realistic newspaper photo
-- Editorial photojournalism style
+- Highly realistic
+- Professional newspaper quality
 - Natural lighting
-- Highly detailed
-- No text, logos or watermarks
-- Return only the final image prompt.
+- No text
+- No logos
+- No watermarks
+- 16:9 aspect ratio
+- Photojournalism style
+- Suitable for news publication
+
+Article:
+
+{article}
+
+Return ONLY the image prompt.

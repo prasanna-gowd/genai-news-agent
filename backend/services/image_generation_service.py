@@ -1,4 +1,5 @@
 import os
+import uuid
 
 from dotenv import load_dotenv
 from google import genai
@@ -15,30 +16,32 @@ class ImageGenerationService:
 
         self.model = "gemini-3.1-flash-image"
 
-    def generate(self, prompt, filename="news_image"):
+        self.output_dir = "generated_images"
+        os.makedirs(self.output_dir, exist_ok=True)
+
+    def generate(self, prompt):
 
         response = self.client.models.generate_content(
             model=self.model,
             contents=prompt
         )
 
-        os.makedirs("images", exist_ok=True)
+        filename = f"{uuid.uuid4().hex}.png"
+        filepath = os.path.join(self.output_dir, filename)
 
         for candidate in response.candidates:
+            if not candidate.content:
+                continue
+
             for part in candidate.content.parts:
 
-                if hasattr(part, "inline_data") and part.inline_data:
+                if getattr(part, "inline_data", None):
 
-                    image_bytes = part.inline_data.data
+                    with open(filepath, "wb") as f:
+                        f.write(part.inline_data.data)
 
-                    path = os.path.join(
-                        "images",
-                        f"{filename}.png"
-                    )
+                    return filepath
 
-                    with open(path, "wb") as f:
-                        f.write(image_bytes)
-
-                    return path
-
-        raise Exception("No image was returned.")
+        raise RuntimeError(
+            "Gemini did not return an image."
+        )
