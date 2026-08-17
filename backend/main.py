@@ -4,32 +4,48 @@ from fastapi.middleware.cors import CORSMiddleware
 from services.pipeline_service import PipelineService
 from database.mongodb import MongoDB
 
+
 app = FastAPI(
     title="LocalPulse AI News Agent",
     version="1.0.0"
 )
 
+
 # ==========================
 # CORS Configuration
 # ==========================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Local development
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
+
+        # Production frontend
+        "https://genai-news-agent-frontend.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# ==========================
+# Services
+# ==========================
+
 pipeline = PipelineService()
 db = MongoDB()
 
+
+# ==========================
+# HOME / HEALTH CHECK
+# ==========================
 
 @app.get("/")
 def home():
@@ -38,9 +54,10 @@ def home():
     }
 
 
-# ---------------------------
-# Run AI Pipeline
-# ---------------------------
+# ==========================
+# RUN AI PIPELINE
+# ==========================
+
 @app.post("/pipeline/run")
 def run_pipeline(city: str = "Anantapur"):
 
@@ -52,9 +69,10 @@ def run_pipeline(city: str = "Anantapur"):
     }
 
 
-# ---------------------------
-# Pending Articles
-# ---------------------------
+# ==========================
+# PENDING ARTICLES
+# ==========================
+
 @app.get("/pending")
 def pending_articles():
 
@@ -66,9 +84,10 @@ def pending_articles():
     }
 
 
-# ---------------------------
-# All Articles
-# ---------------------------
+# ==========================
+# ALL ARTICLES
+# ==========================
+
 @app.get("/articles")
 def all_articles():
 
@@ -80,9 +99,10 @@ def all_articles():
     }
 
 
-# ---------------------------
-# Single Article
-# ---------------------------
+# ==========================
+# SINGLE ARTICLE
+# ==========================
+
 @app.get("/article/{article_hash}")
 def article(article_hash: str):
 
@@ -97,9 +117,10 @@ def article(article_hash: str):
     return data
 
 
-# ---------------------------
-# Approve
-# ---------------------------
+# ==========================
+# APPROVE ARTICLE
+# ==========================
+
 @app.post("/approve/{article_hash}")
 def approve(article_hash: str):
 
@@ -109,9 +130,11 @@ def approve(article_hash: str):
         "message": "Article approved successfully."
     }
 
-# ---------------------------
-# APPROVE ALL
-# ---------------------------
+
+# ==========================
+# APPROVE ALL ARTICLES
+# ==========================
+
 @app.post("/approve-all")
 def approve_all():
 
@@ -122,9 +145,11 @@ def approve_all():
         "approved": approved
     }
 
-# ---------------------------
-# Reject
-# ---------------------------
+
+# ==========================
+# REJECT ARTICLE
+# ==========================
+
 @app.post("/reject/{article_hash}")
 def reject(article_hash: str):
 
@@ -135,9 +160,10 @@ def reject(article_hash: str):
     }
 
 
-# ---------------------------
-# Delete
-# ---------------------------
+# ==========================
+# DELETE ARTICLE
+# ==========================
+
 @app.delete("/delete/{article_hash}")
 def delete(article_hash: str):
 
@@ -148,9 +174,10 @@ def delete(article_hash: str):
     }
 
 
-# ---------------------------
-# Status
-# ---------------------------
+# ==========================
+# ARTICLES BY STATUS
+# ==========================
+
 @app.get("/status/{status}")
 def articles_by_status(status: str):
 
@@ -164,9 +191,10 @@ def articles_by_status(status: str):
     }
 
 
-# ---------------------------
-# Stats
-# ---------------------------
+# ==========================
+# DATABASE STATISTICS
+# ==========================
+
 @app.get("/stats")
 def stats():
 
