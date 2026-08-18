@@ -128,6 +128,25 @@ def all_articles():
 
         articles = db.get_all_articles()
 
+        # Make category available at the top level
+        # for the frontend.
+        for article in articles:
+
+            if not article.get("category"):
+
+                research = article.get("research")
+
+                if isinstance(research, dict):
+
+                    article["category"] = research.get(
+                        "category",
+                        "Other"
+                    )
+
+                else:
+
+                    article["category"] = "Other"
+
         return {
             "count": len(articles),
             "articles": articles
