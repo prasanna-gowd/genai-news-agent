@@ -36,7 +36,10 @@ class MongoDB:
 
     def serialize_many(self, documents):
 
-        return [self.serialize(doc) for doc in documents]
+        return [
+            self.serialize(doc)
+            for doc in documents
+        ]
 
     # =====================================
     # DUPLICATE CHECK
@@ -45,7 +48,9 @@ class MongoDB:
     def is_duplicate(self, article_hash):
 
         return self.articles.find_one(
-            {"hash": article_hash}
+            {
+                "hash": article_hash
+            }
         ) is not None
 
     # Compatibility
@@ -70,7 +75,9 @@ class MongoDB:
         research["article_hash"] = article_hash
 
         self.research.replace_one(
-            {"article_hash": article_hash},
+            {
+                "article_hash": article_hash
+            },
             research,
             upsert=True
         )
@@ -85,7 +92,9 @@ class MongoDB:
             self.articles.find({})
         )
 
-        return self.serialize_many(articles)
+        return self.serialize_many(
+            articles
+        )
 
     # =====================================
     # GET PENDING ARTICLES
@@ -95,11 +104,15 @@ class MongoDB:
 
         articles = list(
             self.articles.find(
-                {"status": "PENDING_APPROVAL"}
+                {
+                    "status": "PENDING_APPROVAL"
+                }
             )
         )
 
-        return self.serialize_many(articles)
+        return self.serialize_many(
+            articles
+        )
 
     # =====================================
     # GET SINGLE ARTICLE
@@ -108,19 +121,29 @@ class MongoDB:
     def get_article(self, article_hash):
 
         article = self.articles.find_one(
-            {"hash": article_hash}
+            {
+                "hash": article_hash
+            }
         )
 
-        return self.serialize(article)
+        return self.serialize(
+            article
+        )
 
     # =====================================
     # UPDATE STATUS
     # =====================================
 
-    def update_status(self, article_hash, status):
+    def update_status(
+        self,
+        article_hash,
+        status
+    ):
 
         self.articles.update_one(
-            {"hash": article_hash},
+            {
+                "hash": article_hash
+            },
             {
                 "$set": {
                     "status": status
@@ -129,16 +152,18 @@ class MongoDB:
         )
 
     # =====================================
-    # APPROVE
+    # APPROVE ARTICLE
     # =====================================
 
-    def approve_article(self, article_hash):
+    def approve_article(
+        self,
+        article_hash
+    ):
 
         self.update_status(
             article_hash,
             "APPROVED"
         )
-
 
     # =====================================
     # APPROVE ALL PENDING
@@ -147,7 +172,9 @@ class MongoDB:
     def approve_all_articles(self):
 
         result = self.articles.update_many(
-            {"status": "PENDING_APPROVAL"},
+            {
+                "status": "PENDING_APPROVAL"
+            },
             {
                 "$set": {
                     "status": "APPROVED"
@@ -158,10 +185,13 @@ class MongoDB:
         return result.modified_count
 
     # =====================================
-    # REJECT
+    # REJECT ARTICLE
     # =====================================
 
-    def reject_article(self, article_hash):
+    def reject_article(
+        self,
+        article_hash
+    ):
 
         self.update_status(
             article_hash,
@@ -169,32 +199,46 @@ class MongoDB:
         )
 
     # =====================================
-    # DELETE
+    # DELETE ARTICLE
     # =====================================
 
-    def delete_article(self, article_hash):
+    def delete_article(
+        self,
+        article_hash
+    ):
 
         self.articles.delete_one(
-            {"hash": article_hash}
+            {
+                "hash": article_hash
+            }
         )
 
         self.research.delete_one(
-            {"article_hash": article_hash}
+            {
+                "article_hash": article_hash
+            }
         )
 
     # =====================================
-    # GET BY STATUS
+    # GET ARTICLES BY STATUS
     # =====================================
 
-    def get_articles_by_status(self, status):
+    def get_articles_by_status(
+        self,
+        status
+    ):
 
         articles = list(
             self.articles.find(
-                {"status": status}
+                {
+                    "status": status
+                }
             )
         )
 
-        return self.serialize_many(articles)
+        return self.serialize_many(
+            articles
+        )
 
     # =====================================
     # DATABASE STATS
@@ -202,60 +246,192 @@ class MongoDB:
 
     def get_stats(self):
 
-        # Articles grouped by category
-        cat_pipeline = [
-            {"$group": {"_id": "$category", "count": {"$sum": 1}}},
-            {"$sort": {"count": -1}}
-        ]
-        by_category = {
-            (d["_id"] or "unknown"): d["count"]
-            for d in self.articles.aggregate(cat_pipeline)
-        }
+        # ---------------------------------
+        # ARTICLES BY CATEGORY
+        # ---------------------------------
+        #
+        # Priority:
+        # 1. article.category
+        # 2. article.research.category
+        # 3. Unknown
+        #
+        category_pipeline = [
 
-        # Articles grouped by published date (last 14 days)
-        # Handles both datetime objects and ISO string fields
+            {
+                "$project": {
+                    "effective_category": {
+                        "$ifNull": [
+                            "$category",
+                            "$research.category"
+                        ]
+                    }
+                }
+            },
+
+            {
+                "$group": {
+                    "_id": "$effective_category",
+                    "count": {
+                        "$sum": 1
+                    }
+                }
+            },
+
+            {
+                "$sort": {
+                    "count": -1
+                }
+            }
+        ]
+
+        by_category = {}
+
+        for document in self.articles.aggregate(
+            category_pipeline
+        ):
+
+            category = document.get(
+                "_id"
+            )
+
+            if not category:
+                category = "Unknown"
+
+            by_category[category] = document[
+                "count"
+            ]
+
+        # ---------------------------------
+        # ARTICLES BY DAY
+        # ---------------------------------
+        #
+        # Supports:
+        # - MongoDB Date
+        # - ISO string
+        #
         day_pipeline = [
+
             {
                 "$addFields": {
                     "pub_date": {
+
                         "$cond": {
-                            "if": {"$eq": [{"$type": "$published"}, "date"]},
+
+                            "if": {
+                                "$eq": [
+                                    {
+                                        "$type": "$published"
+                                    },
+                                    "date"
+                                ]
+                            },
+
                             "then": {
                                 "$dateToString": {
                                     "format": "%Y-%m-%d",
                                     "date": "$published"
                                 }
                             },
+
                             "else": {
-                                "$substr": [{"$ifNull": ["$published", ""]}, 0, 10]
+                                "$substr": [
+                                    {
+                                        "$ifNull": [
+                                            "$published",
+                                            ""
+                                        ]
+                                    },
+                                    0,
+                                    10
+                                ]
                             }
                         }
                     }
                 }
             },
-            {"$match": {"pub_date": {"$ne": ""}}},
-            {"$group": {"_id": "$pub_date", "count": {"$sum": 1}}},
-            {"$sort": {"_id": 1}},
-            {"$limit": 14}
-        ]
-        by_day = [
-            {"date": d["_id"], "count": d["count"]}
-            for d in self.articles.aggregate(day_pipeline)
-            if d["_id"]
+
+            {
+                "$match": {
+                    "pub_date": {
+                        "$ne": ""
+                    }
+                }
+            },
+
+            {
+                "$group": {
+                    "_id": "$pub_date",
+                    "count": {
+                        "$sum": 1
+                    }
+                }
+            },
+
+            {
+                "$sort": {
+                    "_id": 1
+                }
+            },
+
+            {
+                "$limit": 14
+            }
         ]
 
+        by_day = []
+
+        for document in self.articles.aggregate(
+            day_pipeline
+        ):
+
+            if document.get("_id"):
+
+                by_day.append(
+                    {
+                        "date": document["_id"],
+                        "count": document["count"]
+                    }
+                )
+
+        # ---------------------------------
+        # RETURN STATISTICS
+        # ---------------------------------
+
         return {
-            "total_articles": self.articles.count_documents({}),
-            "pending": self.articles.count_documents(
-                {"status": "PENDING_APPROVAL"}
-            ),
-            "approved": self.articles.count_documents(
-                {"status": "APPROVED"}
-            ),
-            "rejected": self.articles.count_documents(
-                {"status": "REJECTED"}
-            ),
-            "research_documents": self.research.count_documents({}),
-            "articles_by_category": by_category,
-            "articles_by_day": by_day
+
+            "total_articles":
+                self.articles.count_documents({}),
+
+            "pending":
+                self.articles.count_documents(
+                    {
+                        "status":
+                            "PENDING_APPROVAL"
+                    }
+                ),
+
+            "approved":
+                self.articles.count_documents(
+                    {
+                        "status":
+                            "APPROVED"
+                    }
+                ),
+
+            "rejected":
+                self.articles.count_documents(
+                    {
+                        "status":
+                            "REJECTED"
+                    }
+                ),
+
+            "research_documents":
+                self.research.count_documents({}),
+
+            "articles_by_category":
+                by_category,
+
+            "articles_by_day":
+                by_day
         }
