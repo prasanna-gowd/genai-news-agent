@@ -464,6 +464,22 @@ class PipelineService:
 
                 now = datetime.utcnow()
 
+                # -------------------------------------------------
+                # CATEGORY
+                # -------------------------------------------------
+                # Research normally contains a category.
+                # If AI research fails, fallback research provides
+                # "Other".
+                # -------------------------------------------------
+
+                category = research.get(
+                    "category",
+                    "Other"
+                )
+
+                if not category:
+                    category = "Other"
+
                 document = {
 
                     "hash": article_hash,
@@ -515,6 +531,10 @@ class PipelineService:
                             )
                         ),
 
+                    # NEW: Save category at top level
+                    "category":
+                        category,
+
                     "importance_score":
                         score,
 
@@ -537,9 +557,9 @@ class PipelineService:
                         now
                 }
 
-                # -------------------------------------------------
-                # THIS IS THE IMPORTANT PART
-                # -------------------------------------------------
+                # =================================================
+                # SAVE TO DATABASE
+                # =================================================
 
                 self.db.save_article(
                     document
