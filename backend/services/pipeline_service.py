@@ -8,8 +8,10 @@ from services.research_service import ResearchService
 from services.ranking_service import RankingService
 from services.caption_service import CaptionService
 from services.image_prompt_service import ImagePromptService
-from database.mongodb import MongoDB
 from services.summary_service import SummaryService
+
+from database.mongodb import MongoDB
+
 
 class PipelineService:
 
@@ -17,13 +19,52 @@ class PipelineService:
 
         self.news = NewsService()
         self.scraper = ScraperService()
+
+        # AI services
         self.research = ResearchService()
         self.summary = SummaryService()
         self.rank = RankingService()
         self.caption = CaptionService()
         self.image_prompt = ImagePromptService()
         self.image_generator = ImageGenerationService()
+
+        # Database
         self.db = MongoDB()
+
+    # ============================================================
+    # FALLBACK RESEARCH
+    # ============================================================
+
+    def _fallback_research(self, article):
+
+        title = article.get("title", "")
+        text = article.get("text", "")
+
+        return {
+            "headline": title,
+            "summary": text[:1000],
+            "short_summary": text[:300],
+            "key_points": [],
+            "people": [],
+            "organizations": [],
+            "locations": [],
+            "category": "Other",
+            "importance_score": 5,
+            "hashtags": [],
+            "sentiment": "Neutral",
+            "image_description": "",
+            "seo_keywords": [],
+            "fact_check_notes": (
+                "AI research unavailable. "
+                "Article retained for manual review."
+            ),
+            "language": "English",
+            "research_status": "UNAVAILABLE"
+        }
+
+    # ============================================================
+    # RUN PIPELINE
+    # ============================================================
 
     def run(self, city="Anantapur"):
 
@@ -31,7 +72,12 @@ class PipelineService:
             "processed": 0,
             "saved": 0,
             "failed": 0,
-            "duplicates": 0
+            "duplicates": 0,
+            "research_failed": 0,
+            "summary_failed": 0,
+            "caption_failed": 0,
+            "image_prompt_failed": 0,
+            "image_failed": 0
         }
 
         print("\n========================================")
@@ -39,16 +85,36 @@ class PipelineService:
         print("========================================")
         print(f"City : {city}\n")
 
-        articles = self.news.fetch_news(city)
+        # ========================================================
+        # FETCH NEWS
+        # ========================================================
+
+        try:
+
+            articles = self.news.fetch_news(city)
+
+        except Exception as exc:
+
+            print("\nNEWS FETCH FAILED")
+            print(str(exc))
+            traceback.print_exc()
+
+            return stats
 
         print(f"Fetched {len(articles)} articles.\n")
+
+        # ========================================================
+        # PROCESS ARTICLES
+        # ========================================================
 
         for article in articles:
 
             stats["processed"] += 1
 
             print("=" * 60)
-            print(f"Processing Article #{stats['processed']}")
+            print(
+                f"Processing Article #{stats['processed']}"
+            )
             print(article.get("title"))
             print("=" * 60)
 
@@ -56,149 +122,517 @@ class PipelineService:
 
                 article_hash = article.get("hash")
 
-                # Duplicate Check
-                if article_hash and self.db.is_duplicate(article_hash):
+                # =================================================
+                # DUPLICATE CHECK
+                # =================================================
+
+                if article_hash and self.db.is_duplicate(
+                    article_hash
+                ):
+
                     stats["duplicates"] += 1
-                    print("Duplicate article. Skipping...\n")
+
+                    print(
+                        "Duplicate article. Skipping...\n"
+                    )
+
                     continue
 
-                # ----------------------------
-                # Scrape Article
-                # ----------------------------
+                # =================================================
+                # SCRAPE ARTICLE
+                # =================================================
+
                 print("Scraping article...")
 
-                article_data = self.scraper.extract_article(
-                    article["url"]
-                )
+                try:
 
-                if article_data is None:
-                    raise Exception("Article scraping returned None.")
+                    article_data = (
+                        self.scraper.extract_article(
+                            article["url"]
+                        )
+                    )
 
-                full_text = article_data.get("text", "").strip()
+                except Exception as exc:
+
+                    print(
+                        "Scraping failed:"
+                    )
+
+                    print(str(exc))
+
+                    article_data = None
+
+                # -------------------------------------------------
+                # If scraping fails, use RSS/article information
+                # instead of throwing the article away.
+                # -------------------------------------------------
+
+                if not article_data:
+
+                    print(
+                        "Using news source data "
+                        "because scraping failed."
+                    )
+
+                    article_data = {
+                        "title": article.get(
+                            "title",
+                            ""
+                        ),
+                        "text": article.get(
+                            "description",
+                            ""
+                        ),
+                        "url": article.get(
+                            "url",
+                            ""
+                        )
+                    }
+
+                full_text = (
+                    article_data.get(
+                        "text",
+                        ""
+                    )
+                    or ""
+                ).strip()
+
+                # -------------------------------------------------
+                # Make sure we at least have something to process.
+                # -------------------------------------------------
 
                 if not full_text:
-                    raise Exception("Article text is empty.")
 
-                print("Article scraped successfully.")
+                    full_text = (
+                        article.get(
+                            "title",
+                            ""
+                        )
+                        or ""
+                    )
 
-                # ----------------------------
-                # AI Research
-                # ----------------------------
-                print("Generating research...")
-
-                research = self.research.analyze(full_text)
-
-                if not research:
-                    raise Exception("Research generation failed.")
-
-                print("Research generated.")
-                # ----------------------------
-                # AI Summary
-                # ----------------------------
-                print("Generating summary...")
-
-                summary = self.summary.summarize(
-                    {
-                        "title": article.get("title"),
-                        "scraped_article": article_data
-                    }
+                print(
+                    "Article data available."
                 )
 
-                print("Summary generated.")
+                # =================================================
+                # AI RESEARCH
+                # =================================================
 
-                # ----------------------------
-                # Ranking
-                # ----------------------------
-                print("Calculating ranking...")
+                print(
+                    "Generating research..."
+                )
 
-                score = self.rank.calculate(research)
+                try:
 
-                print(f"Importance Score : {score}")
+                    research = self.research.analyze(
+                        full_text
+                    )
 
-                # ----------------------------
-                # Caption
-                # ----------------------------
-                print("Generating caption...")
+                    if not research:
 
-                caption = self.caption.generate(research)
+                        raise Exception(
+                            "Empty research response."
+                        )
 
-                print("Caption generated.")
+                    print(
+                        "Research generated."
+                    )
 
-                # ----------------------------
-                # Image Prompt
-                # ----------------------------
-                print("Generating image prompt...")
+                except Exception as exc:
 
-                image_prompt = self.image_prompt.generate(research)
+                    stats["research_failed"] += 1
 
-                print("Image prompt generated.")
+                    print(
+                        "Research failed."
+                    )
 
-                # ----------------------------
-                # AI Image Generation
-                # ----------------------------
-                print("Generating AI image...")
+                    print(str(exc))
+
+                    research = self._fallback_research(
+                        {
+                            "title": article.get(
+                                "title",
+                                ""
+                            ),
+                            "text": full_text
+                        }
+                    )
+
+                # =================================================
+                # AI SUMMARY
+                # =================================================
+
+                print(
+                    "Generating summary..."
+                )
+
+                try:
+
+                    summary = self.summary.summarize(
+                        {
+                            "title": article.get(
+                                "title"
+                            ),
+                            "scraped_article": article_data
+                        }
+                    )
+
+                    if not summary:
+
+                        raise Exception(
+                            "Empty summary response."
+                        )
+
+                    print(
+                        "Summary generated."
+                    )
+
+                except Exception as exc:
+
+                    stats["summary_failed"] += 1
+
+                    print(
+                        "Summary failed:"
+                    )
+
+                    print(str(exc))
+
+                    # ---------------------------------------------
+                    # Fallback summary
+                    # ---------------------------------------------
+
+                    summary = {
+                        "headline": article.get(
+                            "title",
+                            ""
+                        ),
+                        "summary": full_text[:1000],
+                        "short_summary": full_text[:300]
+                    }
+
+                # =================================================
+                # RANKING
+                # =================================================
+
+                print(
+                    "Calculating ranking..."
+                )
+
+                try:
+
+                    score = self.rank.calculate(
+                        research
+                    )
+
+                except Exception as exc:
+
+                    print(
+                        "Ranking failed:"
+                    )
+
+                    print(str(exc))
+
+                    score = research.get(
+                        "importance_score",
+                        5
+                    )
+
+                print(
+                    f"Importance Score : {score}"
+                )
+
+                # =================================================
+                # CAPTION
+                # =================================================
+
+                print(
+                    "Generating caption..."
+                )
+
+                try:
+
+                    caption = self.caption.generate(
+                        research
+                    )
+
+                    if not caption:
+                        caption = ""
+
+                    print(
+                        "Caption generated."
+                    )
+
+                except Exception as exc:
+
+                    stats["caption_failed"] += 1
+
+                    print(
+                        "Caption generation failed:"
+                    )
+
+                    print(str(exc))
+
+                    caption = ""
+
+                # =================================================
+                # IMAGE PROMPT
+                # =================================================
+
+                print(
+                    "Generating image prompt..."
+                )
+
+                try:
+
+                    image_prompt = (
+                        self.image_prompt.generate(
+                            research
+                        )
+                    )
+
+                    if not image_prompt:
+                        image_prompt = ""
+
+                    print(
+                        "Image prompt generated."
+                    )
+
+                except Exception as exc:
+
+                    stats[
+                        "image_prompt_failed"
+                    ] += 1
+
+                    print(
+                        "Image prompt generation failed:"
+                    )
+
+                    print(str(exc))
+
+                    image_prompt = ""
+
+                # =================================================
+                # AI IMAGE GENERATION
+                # =================================================
 
                 generated_image = None
 
-                try:
-                    generated_image = self.image_generator.generate(image_prompt)
-                    print(f"Image saved: {generated_image}")
+                if image_prompt:
 
-                except Exception as e:
-                    print(f"Image generation failed: {e}")
+                    print(
+                        "Generating AI image..."
+                    )
 
-                # ----------------------------
-                # Save
-                # ----------------------------
+                    try:
+
+                        generated_image = (
+                            self.image_generator.generate(
+                                image_prompt
+                            )
+                        )
+
+                        print(
+                            f"Image saved: "
+                            f"{generated_image}"
+                        )
+
+                    except Exception as exc:
+
+                        stats["image_failed"] += 1
+
+                        print(
+                            "Image generation failed:"
+                        )
+
+                        print(str(exc))
+
+                else:
+
+                    print(
+                        "Skipping image generation "
+                        "because no image prompt exists."
+                    )
+
+                # =================================================
+                # SAVE ARTICLE
+                # =================================================
+
+                print(
+                    "Saving article to MongoDB..."
+                )
+
                 now = datetime.utcnow()
 
                 document = {
+
                     "hash": article_hash,
-                    "title": article.get("title"),
-                    "url": article.get("url"),
-                    "published": article.get("published"),
+
+                    "title": article.get(
+                        "title"
+                    ),
+
+                    "url": article.get(
+                        "url"
+                    ),
+
+                    "published": article.get(
+                        "published"
+                    ),
+
                     "city": city,
 
-                    "scraped_article": article_data,
+                    "scraped_article":
+                        article_data,
 
-                    "research": research,
-                    "headline": summary.get("headline"),
+                    "research":
+                        research,
 
-                    "summary": summary.get("summary"),
-                    "importance_score": score,
+                    "headline":
+                        summary.get(
+                            "headline",
+                            article.get(
+                                "title",
+                                ""
+                            )
+                        ),
 
-                    "caption": caption,
+                    "summary":
+                        summary.get(
+                            "summary",
+                            research.get(
+                                "summary",
+                                ""
+                            )
+                        ),
 
-                    "image_prompt": image_prompt,
+                    "short_summary":
+                        summary.get(
+                            "short_summary",
+                            research.get(
+                                "short_summary",
+                                ""
+                            )
+                        ),
 
-                    "status": "PENDING_APPROVAL",
+                    "importance_score":
+                        score,
 
-                    "created_at": now,
-                    "updated_at": now
+                    "caption":
+                        caption,
+
+                    "image_prompt":
+                        image_prompt,
+
+                    "generated_image":
+                        generated_image,
+
+                    "status":
+                        "PENDING_APPROVAL",
+
+                    "created_at":
+                        now,
+
+                    "updated_at":
+                        now
                 }
 
-                self.db.save_article(document)
-                self.db.save_research(article_hash, research)
+                # -------------------------------------------------
+                # THIS IS THE IMPORTANT PART
+                # -------------------------------------------------
+
+                self.db.save_article(
+                    document
+                )
+
+                self.db.save_research(
+                    article_hash,
+                    research
+                )
 
                 stats["saved"] += 1
 
-                print("Article saved successfully.\n")
+                print(
+                    "Article saved successfully."
+                )
 
-            except Exception:
+                print()
+
+            # =====================================================
+            # ARTICLE-LEVEL FAILURE
+            # =====================================================
+
+            except Exception as exc:
 
                 stats["failed"] += 1
 
-                print("\nERROR OCCURRED")
+                print(
+                    "\nARTICLE PROCESSING FAILED"
+                )
+
+                print(
+                    str(exc)
+                )
+
                 traceback.print_exc()
+
                 print()
+
+        # ========================================================
+        # PIPELINE SUMMARY
+        # ========================================================
 
         print("\n========================================")
         print("Pipeline Finished")
         print("========================================")
-        print(f"Processed  : {stats['processed']}")
-        print(f"Saved      : {stats['saved']}")
-        print(f"Duplicates : {stats['duplicates']}")
-        print(f"Failed     : {stats['failed']}")
-        print("========================================\n")
+
+        print(
+            f"Processed          : "
+            f"{stats['processed']}"
+        )
+
+        print(
+            f"Saved              : "
+            f"{stats['saved']}"
+        )
+
+        print(
+            f"Duplicates         : "
+            f"{stats['duplicates']}"
+        )
+
+        print(
+            f"Failed             : "
+            f"{stats['failed']}"
+        )
+
+        print(
+            f"Research Failed    : "
+            f"{stats['research_failed']}"
+        )
+
+        print(
+            f"Summary Failed     : "
+            f"{stats['summary_failed']}"
+        )
+
+        print(
+            f"Caption Failed     : "
+            f"{stats['caption_failed']}"
+        )
+
+        print(
+            f"Image Prompt Failed: "
+            f"{stats['image_prompt_failed']}"
+        )
+
+        print(
+            f"Image Failed       : "
+            f"{stats['image_failed']}"
+        )
+
+        print(
+            "========================================\n"
+        )
 
         return stats
