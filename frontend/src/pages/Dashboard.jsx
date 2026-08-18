@@ -1,30 +1,30 @@
 /**
  * Dashboard.jsx
- * Central orchestrator — lifts all shared state up:
- *  - articles list + loading
- *  - stats + loading
- *  - selected article
- *  - pipeline running state
- *  - toast notifications
- *
- * Passes everything down to child components via props.
+ * Central dashboard orchestrator.
  */
 
 import { useState, useEffect, useCallback } from "react";
+
 import Navbar from "../components/Navbar";
 import StatsCards from "../components/StatsCards";
 import ChartsSection from "../components/ChartsSection";
 import ArticlesTable from "../components/ArticlesTable";
 import ArticleDetails from "../components/ArticleDetails";
 import { Toast, useToast } from "../components/Toast";
+
 import {
   fetchAllArticles,
   fetchStats,
   runPipeline,
 } from "../services/api";
 
+
 function Dashboard() {
-  // ── State ──────────────────────────────────────────────────
+
+  // ============================================================
+  // STATE
+  // ============================================================
+
   const [articles, setArticles] = useState([]);
   const [articlesLoading, setArticlesLoading] = useState(true);
   const [articlesError, setArticlesError] = useState("");
@@ -35,86 +35,246 @@ function Dashboard() {
   const [selectedArticle, setSelectedArticle] = useState(null);
 
   const [pipelineLoading, setPipelineLoading] = useState(false);
+
   const [city, setCity] = useState("Anantapur");
 
-  const { toasts, addToast, removeToast } = useToast();
+  const {
+    toasts,
+    addToast,
+    removeToast,
+  } = useToast();
 
-  // ── Data fetching ──────────────────────────────────────────
+
+  // ============================================================
+  // LOAD ARTICLES
+  // ============================================================
+
   const loadArticles = useCallback(async () => {
+
     try {
+
       setArticlesLoading(true);
       setArticlesError("");
-      const res = await fetchAllArticles();
-      setArticles(res.data.articles ?? []);
 
-      // Keep selected article in sync with fresh data
-      setSelectedArticle((prev) =>
-        prev
-          ? (res.data.articles ?? []).find((a) => a.hash === prev.hash) ?? prev
-          : null
+      const data = await fetchAllArticles();
+
+      console.log("Articles API response:", data);
+
+      const articleList = Array.isArray(data?.articles)
+        ? data.articles
+        : [];
+
+      setArticles(articleList);
+
+
+      // Keep selected article synchronized
+      setSelectedArticle((previous) => {
+
+        if (!previous) {
+          return null;
+        }
+
+        const updatedArticle = articleList.find(
+          (article) => article.hash === previous.hash
+        );
+
+        return updatedArticle ?? previous;
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Failed to load articles:",
+        error
       );
-    } catch (err) {
-      console.error("Failed to load articles:", err);
-      setArticlesError(
-        err.response?.data?.detail ||
-          "Could not connect to the backend. Is FastAPI running?"
-      );
+
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Could not connect to the backend.";
+
+      setArticlesError(message);
+
     } finally {
+
       setArticlesLoading(false);
+
     }
+
   }, []);
+
+
+  // ============================================================
+  // LOAD STATS
+  // ============================================================
 
   const loadStats = useCallback(async () => {
+
     try {
+
       setStatsLoading(true);
-      const res = await fetchStats();
-      setStats(res.data);
-    } catch (err) {
-      console.error("Failed to load stats:", err);
+
+      const data = await fetchStats();
+
+      console.log("Stats API response:", data);
+
+      setStats(data ?? {
+        total_articles: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        research_documents: 0,
+        articles_by_category: {},
+        articles_by_day: [],
+      });
+
+    } catch (error) {
+
+      console.error(
+        "Failed to load stats:",
+        error
+      );
+
+      // Keep dashboard usable even if stats fail
+      setStats({
+        total_articles: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        research_documents: 0,
+        articles_by_category: {},
+        articles_by_day: [],
+      });
+
     } finally {
+
       setStatsLoading(false);
+
     }
+
   }, []);
 
-  // Refresh both articles and stats together
+
+  // ============================================================
+  // REFRESH
+  // ============================================================
+
   const refresh = useCallback(async () => {
-    await Promise.all([loadArticles(), loadStats()]);
-  }, [loadArticles, loadStats]);
 
-  // Initial load
+    await Promise.all([
+      loadArticles(),
+      loadStats(),
+    ]);
+
+  }, [
+    loadArticles,
+    loadStats,
+  ]);
+
+
+  // ============================================================
+  // INITIAL LOAD
+  // ============================================================
+
   useEffect(() => {
+
     refresh();
+
   }, [refresh]);
 
-  // Auto-refresh every 60 seconds
+
+  // ============================================================
+  // AUTO REFRESH
+  // ============================================================
+
   useEffect(() => {
-    const interval = setInterval(refresh, 60_000);
-    return () => clearInterval(interval);
+
+    const interval = setInterval(
+      refresh,
+      60_000
+    );
+
+    return () => {
+      clearInterval(interval);
+    };
+
   }, [refresh]);
 
-  // ── Pipeline ───────────────────────────────────────────────
+
+  // ============================================================
+  // RUN PIPELINE
+  // ============================================================
+
   async function handleRunPipeline() {
-    if (pipelineLoading) return;
+
+    if (pipelineLoading) {
+      return;
+    }
+
     setPipelineLoading(true);
-    addToast(`Running pipeline for "${city}"…`, "info");
+
+    addToast(
+      `Running pipeline for "${city}"…`,
+      "info"
+    );
+
     try {
-      await runPipeline(city);
-      addToast("Pipeline completed successfully! Refreshing data…", "success");
-      await refresh();
-    } catch (err) {
+
+      const result = await runPipeline(city);
+
+      console.log(
+        "Pipeline response:",
+        result
+      );
+
       addToast(
-        `Pipeline failed: ${err.response?.data?.detail || err.message}`,
+        "Pipeline completed successfully! Refreshing data…",
+        "success"
+      );
+
+      await refresh();
+
+    } catch (error) {
+
+      console.error(
+        "Pipeline failed:",
+        error
+      );
+
+      const message =
+        error?.response?.data?.detail ||
+        error?.response?.data?.error ||
+        error?.message ||
+        "Pipeline execution failed.";
+
+      addToast(
+        `Pipeline failed: ${message}`,
         "error"
       );
+
     } finally {
+
       setPipelineLoading(false);
+
     }
+
   }
 
-  // ── Render ─────────────────────────────────────────────────
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
+
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* ── Navbar ────────────────────────────────────────── */}
+
+      {/* ======================================================
+          NAVBAR
+      ====================================================== */}
+
       <Navbar
         onRunPipeline={handleRunPipeline}
         pipelineLoading={pipelineLoading}
@@ -122,45 +282,91 @@ function Dashboard() {
         onCityChange={setCity}
       />
 
-      {/* ── Main Content ──────────────────────────────────── */}
+
+      {/* ======================================================
+          MAIN
+      ====================================================== */}
+
       <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-8">
 
-        {/* Page title */}
+
+        {/* ====================================================
+            PAGE TITLE
+        ==================================================== */}
+
         <div className="mb-8">
+
           <h1 className="text-3xl font-black text-white tracking-tight">
             Dashboard
           </h1>
+
           <p className="text-slate-400 text-sm mt-1">
             AI-powered news monitoring and moderation
           </p>
+
         </div>
 
-        {/* Backend error banner */}
+
+        {/* ====================================================
+            BACKEND ERROR
+        ==================================================== */}
+
         {articlesError && (
+
           <div className="bg-rose-900/30 border border-rose-500/40 rounded-2xl px-6 py-4 mb-6 flex items-start gap-3">
-            <span className="text-rose-400 text-xl flex-shrink-0">⚠️</span>
+
+            <span className="text-rose-400 text-xl flex-shrink-0">
+              ⚠️
+            </span>
+
             <div>
+
               <p className="text-rose-300 font-semibold text-sm">
                 Backend Connection Error
               </p>
-              <p className="text-rose-400/80 text-xs mt-1">{articlesError}</p>
+
+              <p className="text-rose-400/80 text-xs mt-1">
+                {articlesError}
+              </p>
+
             </div>
+
             <button
               onClick={refresh}
               className="ml-auto text-xs text-rose-400 hover:text-rose-200 underline flex-shrink-0"
             >
               Retry
             </button>
+
           </div>
+
         )}
 
-        {/* ── Stats Cards ────────────────────────────────── */}
-        <StatsCards stats={stats} loading={statsLoading} />
 
-        {/* ── Charts ─────────────────────────────────────── */}
-        <ChartsSection stats={stats} loading={statsLoading} />
+        {/* ====================================================
+            STATS
+        ==================================================== */}
 
-        {/* ── Articles Table ──────────────────────────────── */}
+        <StatsCards
+          stats={stats}
+          loading={statsLoading}
+        />
+
+
+        {/* ====================================================
+            CHARTS
+        ==================================================== */}
+
+        <ChartsSection
+          stats={stats}
+          loading={statsLoading}
+        />
+
+
+        {/* ====================================================
+            ARTICLES
+        ==================================================== */}
+
         <ArticlesTable
           articles={articles}
           loading={articlesLoading}
@@ -169,19 +375,35 @@ function Dashboard() {
           onRefresh={refresh}
         />
 
-        {/* ── Article Details ─────────────────────────────── */}
+
+        {/* ====================================================
+            ARTICLE DETAILS
+        ==================================================== */}
+
         <ArticleDetails
           article={selectedArticle}
           onRefresh={refresh}
           addToast={addToast}
           onClose={() => setSelectedArticle(null)}
         />
+
       </main>
 
-      {/* ── Toast Notifications ───────────────────────────── */}
-      <Toast toasts={toasts} removeToast={removeToast} />
+
+      {/* ======================================================
+          TOASTS
+      ====================================================== */}
+
+      <Toast
+        toasts={toasts}
+        removeToast={removeToast}
+      />
+
     </div>
+
   );
+
 }
+
 
 export default Dashboard;
