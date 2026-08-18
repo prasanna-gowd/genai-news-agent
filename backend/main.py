@@ -6,6 +6,10 @@ from services.pipeline_service import PipelineService
 from database.mongodb import MongoDB
 
 
+# ============================================================
+# FASTAPI APP
+# ============================================================
+
 app = FastAPI(
     title="LocalPulse AI News Agent",
     version="1.0.0"
@@ -13,20 +17,26 @@ app = FastAPI(
 
 
 # ============================================================
-# CORS
+# CORS CONFIGURATION
 # ============================================================
+
+ALLOWED_ORIGINS = [
+    # Local development
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+
+    # Production frontend
+    "https://genai-news-agent-frontend.onrender.com",
+]
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "https://genai-news-agent-frontend.onrender.com",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,7 +58,7 @@ db = MongoDB()
 @app.get("/")
 def home():
     return {
-        "message": "LocalPulse AI News Agent is Running"
+        "message": "LocalPulse AI News Agent is Running 🚀"
     }
 
 
@@ -58,7 +68,9 @@ def home():
 
 @app.post("/pipeline/run")
 def run_pipeline(city: str = "Anantapur"):
+
     try:
+
         result = pipeline.run(city)
 
         return {
@@ -67,6 +79,7 @@ def run_pipeline(city: str = "Anantapur"):
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
@@ -83,7 +96,9 @@ def run_pipeline(city: str = "Anantapur"):
 
 @app.get("/pending")
 def pending_articles():
+
     try:
+
         articles = db.get_pending_articles()
 
         return {
@@ -92,6 +107,7 @@ def pending_articles():
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
@@ -107,7 +123,9 @@ def pending_articles():
 
 @app.get("/articles")
 def all_articles():
+
     try:
+
         articles = db.get_all_articles()
 
         return {
@@ -116,6 +134,7 @@ def all_articles():
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
@@ -131,10 +150,13 @@ def all_articles():
 
 @app.get("/article/{article_hash}")
 def article(article_hash: str):
+
     try:
+
         data = db.get_article(article_hash)
 
         if data is None:
+
             raise HTTPException(
                 status_code=404,
                 detail="Article not found."
@@ -143,9 +165,11 @@ def article(article_hash: str):
         return data
 
     except HTTPException:
+
         raise
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
@@ -156,22 +180,27 @@ def article(article_hash: str):
 
 
 # ============================================================
-# APPROVE
+# APPROVE ARTICLE
 # ============================================================
 
 @app.post("/approve/{article_hash}")
 def approve(article_hash: str):
+
     try:
+
         db.approve_article(article_hash)
 
         return {
+            "success": True,
             "message": "Article approved successfully."
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
+                "success": False,
                 "error": "Failed to approve article.",
                 "detail": str(exc)
             }
@@ -179,12 +208,14 @@ def approve(article_hash: str):
 
 
 # ============================================================
-# APPROVE ALL
+# APPROVE ALL ARTICLES
 # ============================================================
 
 @app.post("/approve-all")
 def approve_all():
+
     try:
+
         approved = db.approve_all_articles()
 
         return {
@@ -193,6 +224,7 @@ def approve_all():
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
@@ -204,22 +236,27 @@ def approve_all():
 
 
 # ============================================================
-# REJECT
+# REJECT ARTICLE
 # ============================================================
 
 @app.post("/reject/{article_hash}")
 def reject(article_hash: str):
+
     try:
+
         db.reject_article(article_hash)
 
         return {
+            "success": True,
             "message": "Article rejected successfully."
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
+                "success": False,
                 "error": "Failed to reject article.",
                 "detail": str(exc)
             }
@@ -227,22 +264,27 @@ def reject(article_hash: str):
 
 
 # ============================================================
-# DELETE
+# DELETE ARTICLE
 # ============================================================
 
 @app.delete("/delete/{article_hash}")
 def delete(article_hash: str):
+
     try:
+
         db.delete_article(article_hash)
 
         return {
+            "success": True,
             "message": "Article deleted successfully."
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
+                "success": False,
                 "error": "Failed to delete article.",
                 "detail": str(exc)
             }
@@ -250,13 +292,17 @@ def delete(article_hash: str):
 
 
 # ============================================================
-# STATUS
+# ARTICLES BY STATUS
 # ============================================================
 
 @app.get("/status/{status}")
 def articles_by_status(status: str):
+
     try:
-        articles = db.get_articles_by_status(status.upper())
+
+        articles = db.get_articles_by_status(
+            status.upper()
+        )
 
         return {
             "count": len(articles),
@@ -264,6 +310,7 @@ def articles_by_status(status: str):
         }
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
@@ -274,15 +321,18 @@ def articles_by_status(status: str):
 
 
 # ============================================================
-# STATS
+# DATABASE STATS
 # ============================================================
 
 @app.get("/stats")
 def stats():
+
     try:
+
         return db.get_stats()
 
     except Exception as exc:
+
         return JSONResponse(
             status_code=500,
             content={
