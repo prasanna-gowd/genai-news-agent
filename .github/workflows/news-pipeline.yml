@@ -1,0 +1,24 @@
+﻿name: Automated News Pipeline
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+
+  workflow_dispatch:
+
+jobs:
+  run-news-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run Anantapur News Pipeline
+        run: |
+          echo "Starting AI News Pipeline..."
+
+          curl --fail-with-body `
+            --max-time 600 `
+            -X POST `
+            "https://localpulse-ai-news-agent.onrender.com/pipeline/run?city=Anantapur"
+
+          echo ""
+          echo "AI News Pipeline completed successfully."
