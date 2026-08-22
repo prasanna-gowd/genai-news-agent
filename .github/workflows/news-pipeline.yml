@@ -2,7 +2,7 @@
 
 on:
   schedule:
-    - cron: "0 */3 * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 jobs:
@@ -15,7 +15,8 @@ jobs:
           echo "Starting AI News Pipeline..."
 
           curl --fail-with-body \
-            --max-time 600 \
+            --max-time 1200 \
+            --connect-timeout 30 \
             -X POST \
             "https://localpulse-ai-news-agent.onrender.com/pipeline/run?city=Anantapur"
 
